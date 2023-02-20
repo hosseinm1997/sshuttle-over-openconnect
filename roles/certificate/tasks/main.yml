@@ -1,0 +1,49 @@
+---
+
+- name: Create /etc/ocserv/ directory
+  ansible.builtin.file:
+    path: /etc/ocserv
+    state: directory
+    mode: 0644
+  when:     
+
+
+- name: Copy template files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/ocserv/{{ item }}"
+    mode: 0600
+  with_items:
+    - ca.tmpl
+    - server.tmpl
+
+- name: Install gnutls-bin
+  ansible.builtin.apt:
+    name: gnutls-bin
+    state: present
+
+- name: Check that the ca-key.pem exists
+  stat:
+    path: /etc/ocserv/ca-key.pem
+  register: ca_stat_result
+
+- name: Generate ca cert
+  ansible.builtin.shell:
+    chdir: /etc/ocserv/
+    cmd: certtool --generate-privkey --outfile ca-key.pem && certtool --generate-self-signed --load-privkey ca-key.pem --template ca.tmpl --outfile ca-cert.pem
+  register: generate_ca_cert
+  when: "not ca_stat_result.stat.exists"
+  failed_when: "'Signing certificate...' not in generate_ca_cert.stderr"
+
+- name: Check that the server-cert.pem exists
+  stat:
+    path: /etc/ocserv/server-cert.pem
+  register: server_cert_stat_result
+
+- name: Generate server cert
+  ansible.builtin.shell:
+    chdir: /etc/ocserv/
+    cmd: certtool --generate-privkey --outfile server-key.pem && certtool --generate-certificate --load-privkey server-key.pem --load-ca-certificate ca-cert.pem --load-ca-privkey ca-key.pem --template server.tmpl --outfile server-cert.pem
+  register: generate_server_cert
+  when: "not server_cert_stat_result.stat.exists"
+  failed_when: "'Signing certificate...' not in generate_server_cert.stderr"

@@ -1,0 +1,149 @@
+---
+- name: Install ocserv
+  ansible.builtin.apt:
+    name: ocserv
+    state: present
+
+- name: Copy config file
+  ansible.builtin.copy:
+    src: ocserv.conf
+    dest: /etc/ocserv/ocserv.conf
+    mode: 0644
+
+# - name: Check ocserv status
+#   ansible.builtin.shell:
+#     cmd: |
+#       systemctl status ocserv | grep futex
+#   register: ocserv_status
+#   ignore_errors: yes
+
+# - name: Debug ocserv status
+#   ansible.builtin.debug:
+#     msg: "{{ ocserv_status }}"
+
+- name: Check ocserv status
+  ansible.builtin.stat:
+    path: /etc/systemd/system/ocserv.service
+  register: ocserv_build
+
+- name: Install build requirements
+  ansible.builtin.apt:
+    pkg: "{{ item }}" 
+    state: present
+
+  with_items: 
+  - git
+  - ruby-ronn 
+  - libbsd-dev 
+  - libsystemd-dev
+  - libpcl-dev
+  - libwrap0-dev
+  - libgnutls28-dev
+  - libev-dev
+  - libpam0g-dev
+  - liblz4-dev
+  - libseccomp-dev
+  - libreadline-dev
+  - libnl-route-3-dev
+  - libkrb5-dev
+  - libradcli-dev
+  - libcurl4-gnutls-dev
+  - libcjose-dev
+  - libjansson-dev
+  - libprotobuf-c-dev
+  - libtalloc-dev
+  - libhttp-parser-dev
+  - protobuf-c-compiler
+  - gperf
+  - nuttcp
+  - lcov
+  - libuid-wrapper
+  - libpam-wrapper
+  - libnss-wrapper
+  - libsocket-wrapper
+  - gss-ntlmssp
+  - haproxy
+  - iputils-ping
+  - freeradius
+  - gawk
+  - gnutls-bin
+  - iproute2
+  - yajl-tools
+  - tcpdump
+
+  # grep command return code 1 in case finding no match
+  # If return code equals 1 it means we don't have futex error.
+  # We can skip rebuilding ocserv from the source
+  # when: "ocserv_status.rc != 1"
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '22.04' and not ocserv_build.stat.exists
+
+
+- name: Check ssh proxy
+  ansible.builtin.shell: |
+    cnt=$(netstat -tpln | grep 127.0.0.1:{{ proxy_port }} | grep ssh | wc -l)
+    if [ $cnt -gt 0 ]
+    then
+      echo 'set'
+    else
+      echo 'notset'
+    fi
+  register: ssh_proxy
+
+- name: Setup SSH socks proxy
+  ansible.builtin.shell: |
+    ssh -D {{ proxy_port }} -fCqN {{ remote.user }}@{{ remote.host }} -p {{ remote.port }}
+  when: "'notset' in ssh_proxy.stdout"
+
+- name: Set proxy for git
+  ansible.builtin.git_config:
+    name: http.proxy
+    value: socks5://127.0.0.1:{{ proxy_port }}
+    scope: global
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '22.04' and not ocserv_build.stat.exists
+  # when: "ocserv_status.rc != 1"
+
+- name: Clone ocserv
+  ansible.builtin.git:
+    repo: https://gitlab.com/openconnect/ocserv.git
+    dest: /tmp/ocserv
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '22.04' and not ocserv_build.stat.exists
+  # when: "ocserv_status.rc != 1"
+
+- name: Unset proxy for git
+  ansible.builtin.git_config:
+    name: http.proxy
+    value: 
+    scope: global
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '22.04' and not ocserv_build.stat.exists
+  # when: "ocserv_status.rc != 1"
+
+- name: Make
+  ansible.builtin.shell:
+    chdir: /tmp/ocserv
+    cmd: |
+      autoreconf -fvi 
+      ./configure && make 
+      make install 
+      cp /lib/systemd/system/ocserv.service /etc/systemd/system/ocserv.service
+      sed -i 's/\/usr\/sbin\/ocserv/\/usr\/local\/sbin\/ocserv/' /etc/systemd/system/ocserv.service
+      systemctl daemon-reload
+      systemctl restart ocserv
+      systemctl is-failed ocserv.service
+  register: make_result
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '22.04' and not ocserv_build.stat.exists
+  # when: "ocserv_status.rc != 1"
+  failed_when: "'failed' in make_result.stdout"
+
+
+- name: Check ocserv is running
+  ansible.builtin.systemd:
+    name: ocserv
+    state: started
+  register: ocserv_running
+
+- name: Create users
+  ansible.builtin.shell:
+    cmd: "echo {{ item.pass }} | ocpasswd -c /etc/ocserv/ocpasswd {{ item.user }}"
+  loop:
+    "{{ ocserv.clients }}"
+  when: "ocserv_running.state == 'started'"

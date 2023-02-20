@@ -1,0 +1,4 @@
+#!/bin/bash
+iptables -t nat -F sshuttle-12299
+iptables -t nat -F sshuttle-12300
+sshuttle --exclude-from=/etc/sshuttle/iran-subnets -r {{ remote.user }}@{{ remote.host }}:{{ remote.port }} --listen 10.12.0.1 --ns-hosts=1.1.1.1,8.8.8.8 0/0 --no-latency-control

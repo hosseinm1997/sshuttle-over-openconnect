@@ -1,0 +1,9 @@
+---
+# defaults file for ocserv
+ocserv:
+  clients:
+    - user: hossein
+      pass: "123"
+
+    - user: user1
+      pass: "123"

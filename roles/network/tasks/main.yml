@@ -1,0 +1,35 @@
+---
+- name: Make iptables-persistent non interactive
+  ansible.builtin.shell: |
+    echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections 
+    echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
+
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: present
+
+- name: Check iptables config is set
+  ansible.builtin.shell: |
+    # cnt=$(iptables -t nat -L -v | grep MASQUERADE | grep $(ip route | grep default | sed -e "s/^.*dev.//" -e "s/.proto.*//") | wc -l)
+    cnt=$(iptables -t nat -L -v | grep MASQUERADE | grep {{ ansible_default_ipv4.interface }} | wc -l)
+    if [ $cnt -gt 0 ]
+    then
+      echo "set"
+    else
+      echo "notset"
+    fi
+  register: iptable_config
+
+- name: Add MASQUERADE
+  ansible.builtin.shell:
+    cmd: iptables -t nat -A POSTROUTING -o {{ ansible_default_ipv4.interface }} -j MASQUERADE
+  when: "'notset' in iptable_config.stdout"
+
+- name: Enable IP Forwarding  
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes

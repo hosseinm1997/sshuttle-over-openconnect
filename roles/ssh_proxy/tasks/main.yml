@@ -1,0 +1,33 @@
+---
+- name: Install sshpass/net-tools
+  ansible.builtin.apt:
+    package:
+      - sshpass
+      - net-tools
+    state: present
+
+- name: Check ssh proxy
+  ansible.builtin.shell: |
+    cnt=$(netstat -tpln | grep 127.0.0.1:{{ proxy_port }} | grep ssh | wc -l)
+    if [ $cnt -gt 0 ]
+    then
+      echo 'set'
+    else
+      echo 'notset'
+    fi
+  register: ssh_proxy
+
+- name: SSH KeyGen command
+  ansible.builtin.shell: > 
+    yes 'y' | ssh-keygen -f "$HOME/.ssh/id_rsa" -q -N ""
+  when: "'notset' in ssh_proxy.stdout"
+
+- name: SSH Copy ID command
+  ansible.builtin.shell: |
+    sshpass -p {{ password }} ssh-copy-id -f -p {{ remote.port }} -o StrictHostKeyChecking=no {{ remote.user }}@{{ remote.host }}
+  when: "'notset' in ssh_proxy.stdout"
+
+- name: Setup SSH socks proxy
+  ansible.builtin.shell: |
+    ssh -D {{ proxy_port }} -fCqN {{ remote.user }}@{{ remote.host }} -p {{ remote.port }}
+  when: "'notset' in ssh_proxy.stdout"

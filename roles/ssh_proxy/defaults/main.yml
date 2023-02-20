@@ -1,0 +1,7 @@
+---
+# defaults file for ssh_proxy
+proxy_port: "{{ default('proxy_port') }}"
+remote:
+    host: "{{ default('remote.host') }}"
+    port: "{{ default('remote.port') }}"
+    user: "{{ default('remote.user') }}"

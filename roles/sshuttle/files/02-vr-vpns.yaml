@@ -1,0 +1,11 @@
+network:
+  version: 2
+  renderer: networkd
+  bridges:
+    vr-vpns:
+      dhcp4: no
+      dhcp6: no
+      accept-ra: no
+      interfaces: [ ]
+      addresses:
+        - 10.12.0.1/24

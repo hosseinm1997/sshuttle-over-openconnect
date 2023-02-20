@@ -1,0 +1,14 @@
+- name: Install all
+  hosts: tunnelservers
+  strategy: debug
+  vars_prompt:
+  - name: password
+    prompt: Enter remote server ssh password
+    unsafe: true
+    private: true
+  roles:
+  - { role: ssh_proxy }
+  - { role: certificate }
+  - { role: ocserv }
+  - { role: network }
+  - { role: sshuttle }

@@ -1,0 +1,9 @@
+remote:
+  host: 95.217.208.178
+  port: 5858
+  user: root
+
+  # host: 65.21.247.7
+  # port: 22
+  # user: root
+proxy_port: 1080

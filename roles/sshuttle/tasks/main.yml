@@ -1,0 +1,55 @@
+---
+- name: Install sshuttle
+  ansible.builtin.apt:
+    name: sshuttle
+    state: present
+
+- name: Create sshuttle executable
+  ansible.builtin.template:
+    src: sshuttle-tunnel.sh.j2
+    dest: /usr/sbin/sshuttle-tunnel.sh
+    mode: 0644
+
+- name: Copy sshuttle configuration files
+  ansible.builtin.copy:
+    src: "{{ item.file }}"
+    dest: "{{ item.address }}"
+    mode: 0644
+  with_items:
+    - { file: "sshuttle-tunnel.service", address: "/etc/systemd/system/sshuttle-tunnel.service" }
+    - { file: "iran-subnets", address: "/etc/sshuttle/iran-subnets" }
+
+################################################################
+# Create dummy/virtual inrerface to listen on ocserv interfaces
+################################################################
+
+- name: Check dummy inrerface is up
+  ansible.builtin.shell: |
+    ip a show vr-vpns up
+  register: dummy_is_up
+
+- name: Copy dummy/virtual inrerface config file
+  ansible.builtin.copy:
+    src: 02-vr-vpns.yaml
+    dest: /etc/netplan/02-vr-vpns.yaml
+    mode: 0644
+  when: "not 'UP' in dummy_is_up.stdout"
+
+- name: Apply netplan
+  ansible.builtin.shell: |
+    netplan apply
+  when: "not 'UP' in dummy_is_up.stdout"
+
+
+##### We can use this commands instead of netplan, but they are not persistent after reboot
+# ip link add vr-vpns type dummy
+# ip addr add 10.12.0.1/24 brd + dev vr-vpns label vr-vpns:0
+# ifconfig vr-vpns hw ether C8:D7:4A:4E:47:50
+# ip link set dev vr-vpns up
+
+#################################################################
+
+  - name: Start sshuttle service
+  ansible.builtin.service:
+    name: sshuttle-tunnel
+    state: restarted
